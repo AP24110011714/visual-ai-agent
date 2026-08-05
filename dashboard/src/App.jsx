@@ -1,3 +1,6 @@
+import Button from "@mui/material/Button";
+import DownloadIcon from "@mui/icons-material/Download";
+
 import { useEffect, useState } from "react";
 import axios from "axios";
 
@@ -24,6 +27,7 @@ function App() {
 
   useEffect(() => {
     loadActivities();
+    
   }, []);
 
   const loadActivities = async () => {
