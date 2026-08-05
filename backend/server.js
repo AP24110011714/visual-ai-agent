@@ -4,96 +4,123 @@ const db = require("./database");
 const fs = require("fs-extra");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
+
 const extractText = require("./ocr");
+const generateAISummary = require("./ai");
 
 const app = express();
 
 app.use(cors());
-
-app.use(
-  "/screenshots",
-  express.static(path.join(__dirname, "screenshots"))
-);
-
 app.use(express.json({ limit: "20mb" }));
 
 const screenshotDir = path.join(__dirname, "screenshots");
 fs.ensureDirSync(screenshotDir);
 
+// Serve screenshots to the dashboard
+app.use("/screenshots", express.static(screenshotDir));
+
 app.post("/activity", async (req, res) => {
-  try {
-    const { title, url, timestamp, screenshot } = req.body;
 
-    let screenshotPath = "";
-    let ocrText = "";
+    try {
 
-    if (screenshot) {
-      const base64Data = screenshot.replace(
-        /^data:image\/png;base64,/,
-        ""
-      );
+        const { title, url, timestamp, screenshot } = req.body;
 
-      const filename = uuidv4() + ".png";
+        let screenshotPath = "";
+        let ocrText = "";
+        let aiSummary = "";
 
-      screenshotPath = path.join(screenshotDir, filename);
+        if (screenshot) {
 
-      fs.writeFileSync(screenshotPath, base64Data, "base64");
+            const base64Data = screenshot.replace(
+                /^data:image\/png;base64,/,
+                ""
+            );
 
-      console.log("Screenshot saved:", screenshotPath);
+            const filename = uuidv4() + ".png";
 
-      ocrText = await extractText(screenshotPath);
+            screenshotPath = path.join(screenshotDir, filename);
 
-      console.log("OCR Result:");
-      console.log(ocrText);
-    }
+            fs.writeFileSync(screenshotPath, base64Data, "base64");
 
-    db.run(
-      `INSERT INTO activities
-      (title,url,timestamp,screenshot,ocr_text)
-      VALUES(?,?,?,?,?)`,
-      [
-        title,
-        url,
-        timestamp,
-        screenshotPath,
-        ocrText
-      ],
-      function (err) {
-        if (err) {
-          return res.status(500).json(err);
+            console.log("Screenshot saved:", screenshotPath);
+
+            // OCR
+            ocrText = await extractText(screenshotPath);
+
+            console.log("OCR Completed");
+
+            // AI Analysis
+            aiSummary = JSON.stringify(
+                generateAISummary(title, url, ocrText),
+                null,
+                2
+            );
+
+            console.log("AI Analysis Completed");
         }
 
-        res.json({
-          success: true,
-          id: this.lastID,
-          screenshot: screenshotPath,
-          ocr: ocrText
-        });
-      }
-    );
-  } catch (err) {
-    console.error(err);
+        db.run(
+            `
+            INSERT INTO activities
+            (title, url, timestamp, screenshot, ocr_text, ai_summary)
+            VALUES (?, ?, ?, ?, ?, ?)
+            `,
+            [
+                title,
+                url,
+                timestamp,
+                screenshotPath,
+                ocrText,
+                aiSummary
+            ],
+            function (err) {
 
-    res.status(500).json({
-      error: err.message
-    });
-  }
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json(err);
+                }
+
+                res.json({
+                    success: true,
+                    id: this.lastID,
+                    ai_summary: aiSummary
+                });
+
+            }
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            error: err.message
+        });
+
+    }
+
 });
 
 app.get("/activities", (req, res) => {
-  db.all(
-    "SELECT * FROM activities ORDER BY id DESC",
-    [],
-    (err, rows) => {
-      if (err) {
-        return res.status(500).json(err);
-      }
 
-      res.json(rows);
-    }
-  );
+    db.all(
+        "SELECT * FROM activities ORDER BY id DESC",
+        [],
+        (err, rows) => {
+
+            if (err) {
+                return res.status(500).json(err);
+            }
+
+            res.json(rows);
+
+        }
+    );
+
 });
 
 app.listen(5000, () => {
-  console.log("Server running on http://localhost:5000");
+
+    console.log("Server running on http://localhost:5000");
+
 });
