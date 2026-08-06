@@ -1,265 +1,247 @@
-import Button from "@mui/material/Button";
-import DownloadIcon from "@mui/icons-material/Download";
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-
-import {
-  Container,
-  Typography,
-  Card,
-  CardContent,
-  Grid,
-  Box,
-  TextField,
-  Chip
-} from "@mui/material";
-
-import SearchIcon from "@mui/icons-material/Search";
-import LanguageIcon from "@mui/icons-material/Language";
-import ImageIcon from "@mui/icons-material/Image";
-import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import "./App.css";
+import Charts from "./components/Charts";
+import ExportButtons from "./components/ExportButtons";
+import ActivityModal from "./components/ActivityModal";
 
 function App() {
-
   const [activities, setActivities] = useState([]);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [productivityFilter, setProductivityFilter] = useState("All");
+  const [sortOrder, setSortOrder] = useState("Newest");
+  const [selectedActivity, setSelectedActivity] = useState(null);
+
+  const loadActivities = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/activities");
+      setActivities(response.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   useEffect(() => {
     loadActivities();
-    
+
+    const interval = setInterval(loadActivities, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const loadActivities = async () => {
-    const res = await axios.get("http://localhost:5000/activities");
-    setActivities(res.data);
-  };
+  const filteredActivities = useMemo(() => {
+    return [...activities]
+      .filter((item) => {
+        let ai = null;
 
-  const filtered = activities.filter((item) => {
+        try {
+          ai = JSON.parse(item.ai_summary);
+        } catch {}
 
-    return (
-      item.title?.toLowerCase().includes(search.toLowerCase()) ||
-      item.url?.toLowerCase().includes(search.toLowerCase()) ||
-      item.ocr_text?.toLowerCase().includes(search.toLowerCase())
-    );
+        const searchMatch =
+          item.title?.toLowerCase().includes(search.toLowerCase()) ||
+          item.url?.toLowerCase().includes(search.toLowerCase()) ||
+          item.ocr_text?.toLowerCase().includes(search.toLowerCase());
 
-  });
+        const categoryMatch =
+          categoryFilter === "All" ||
+          (ai && ai.category === categoryFilter);
+
+        const productivityMatch =
+          productivityFilter === "All" ||
+          (ai && ai.productivity === productivityFilter);
+
+        return searchMatch && categoryMatch && productivityMatch;
+      })
+      .sort((a, b) => {
+        if (sortOrder === "Newest") {
+          return new Date(b.timestamp) - new Date(a.timestamp);
+        } else {
+          return new Date(a.timestamp) - new Date(b.timestamp);
+        }
+      });
+  }, [
+    activities,
+    search,
+    categoryFilter,
+    productivityFilter,
+    sortOrder
+  ]);
+
+  const totalActivities = activities.length;
+  const totalScreenshots = activities.filter((a) => a.screenshot).length;
+  const totalAI = activities.filter((a) => a.ai_summary).length;
+
+  const highProductivity = activities.filter((a) => {
+    try {
+      return JSON.parse(a.ai_summary)?.productivity === "High";
+    } catch {
+      return false;
+    }
+  }).length;
 
   return (
+    <div className="app">
 
-    <Box
-      sx={{
-        minHeight: "100vh",
-        background: "#eef2f7",
-        py: 5
-      }}
-    >
+      <header className="header">
+        <h1>Visual AI Agent Dashboard</h1>
+        <p>Browser Activity Monitoring using OCR & AI</p>
+      </header>
 
-      <Container maxWidth="xl">
+      <div className="stats">
 
-        <Typography
-          variant="h3"
-          fontWeight="bold"
-          align="center"
-          gutterBottom
-        >
-          Visual AI Agent Dashboard
-        </Typography>
+        <div className="stat-card">
+          <h2>{totalActivities}</h2>
+          <p>Total Activities</p>
+        </div>
 
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <div className="stat-card">
+          <h2>{totalScreenshots}</h2>
+          <p>Screenshots</p>
+        </div>
 
-          <Grid item xs={12} md={4}>
+        <div className="stat-card">
+          <h2>{totalAI}</h2>
+          <p>AI Analysed</p>
+        </div>
 
-            <Card>
+        <div className="stat-card">
+          <h2>{highProductivity}</h2>
+          <p>High Productivity</p>
+        </div>
 
-              <CardContent>
+      </div>
 
-                <Typography variant="h5">
+      <Charts activities={activities} />
 
-                  {activities.length}
+      <ExportButtons activities={activities} />
 
-                </Typography>
+      <div className="filters">
 
-                <Typography>
-
-                  Total Activities
-
-                </Typography>
-
-              </CardContent>
-
-            </Card>
-
-          </Grid>
-
-          <Grid item xs={12} md={4}>
-
-            <Card>
-
-              <CardContent>
-
-                <Typography variant="h5">
-
-                  {activities.filter(a=>a.screenshot).length}
-
-                </Typography>
-
-                <Typography>
-
-                  Screenshots
-
-                </Typography>
-
-              </CardContent>
-
-            </Card>
-
-          </Grid>
-
-          <Grid item xs={12} md={4}>
-
-            <Card>
-
-              <CardContent>
-
-                <Typography variant="h5">
-
-                  {activities.filter(a=>a.ocr_text).length}
-
-                </Typography>
-
-                <Typography>
-
-                  OCR Records
-
-                </Typography>
-
-              </CardContent>
-
-            </Card>
-
-          </Grid>
-
-        </Grid>
-
-        <TextField
-
-          fullWidth
-
-          placeholder="Search by title, URL or OCR..."
-
+        <input
+          type="text"
+          placeholder="Search title, URL or OCR..."
           value={search}
-
-          onChange={(e)=>setSearch(e.target.value)}
-
-          InputProps={{
-            startAdornment:<SearchIcon sx={{mr:1}}/>
-          }}
-
-          sx={{mb:4}}
-
+          onChange={(e) => setSearch(e.target.value)}
         />
 
-        <Grid container spacing={3}>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+        >
+          <option value="All">All Categories</option>
+          <option value="Learning">Learning</option>
+          <option value="Entertainment">Entertainment</option>
+          <option value="Communication">Communication</option>
+          <option value="Development">Development</option>
+          <option value="Professional">Professional</option>
+          <option value="Search Engine">Search Engine</option>
+        </select>
 
-          {filtered.map((item)=>(
+        <select
+          value={productivityFilter}
+          onChange={(e) => setProductivityFilter(e.target.value)}
+        >
+          <option value="All">All Productivity</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
 
-            <Grid item xs={12} key={item.id}>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value)}
+        >
+          <option value="Newest">Newest First</option>
+          <option value="Oldest">Oldest First</option>
+        </select>
 
-              <Card
-                sx={{
-                  borderRadius:4
-                }}
-              >
+      </div>
 
-                <CardContent>
+      {filteredActivities.length === 0 ? (
+        <div className="empty">
+          <h3>No matching activities found.</h3>
+        </div>
+      ) : (
+        filteredActivities.map((item) => {
+          let ai = null;
 
-                  <Typography
-                    variant="h5"
-                    fontWeight="bold"
-                    gutterBottom
+          try {
+            ai = JSON.parse(item.ai_summary);
+          } catch {}
+
+          return (
+<div
+  className="activity-card"
+  key={item.id}
+  onClick={() => setSelectedActivity(item)}
+  style={{ cursor: "pointer" }}
+>
+              <div className="activity-header">
+
+                <div>
+                  <h2>{item.title}</h2>
+
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="url"
                   >
-                    {item.title}
-                  </Typography>
+                    {item.url}
+                  </a>
+                </div>
 
-                  <Chip
-                    icon={<LanguageIcon/>}
-                    label={item.url}
-                    sx={{mb:2}}
-                  />
+                <span>
+                  {new Date(item.timestamp).toLocaleString()}
+                </span>
 
-                  <Typography sx={{mb:2}}>
+              </div>
 
-                    <AccessTimeIcon
-                      fontSize="small"
-                      sx={{mr:1}}
-                    />
+              {item.screenshot && (
+                <img
+                  className="screenshot"
+                  src={
+                    "http://localhost:5000/screenshots/" +
+                    item.screenshot.split("\\").pop()
+                  }
+                  alt="Screenshot"
+                />
+              )}
 
-                    {new Date(item.timestamp).toLocaleString()}
+              <div className="ocr">
+                <h3>OCR Text</h3>
+                <pre>{item.ocr_text || "No OCR Available"}</pre>
+              </div>
 
-                  </Typography>
+              {ai && (
+                <div className="ai-box">
 
-                  {item.screenshot && (
+                  <h3>AI Analysis</h3>
 
-                    <Box
-                      component="img"
-                      src={
-                        "http://localhost:5000/screenshots/" +
-                        item.screenshot.split("\\").pop()
-                      }
-                      sx={{
-                        width:"100%",
-                        maxHeight:350,
-                        objectFit:"contain",
-                        borderRadius:3,
-                        border:"1px solid #ddd",
-                        mb:3
-                      }}
-                    />
+                  <p><strong>Activity:</strong> {ai.activity}</p>
+                  <p><strong>Category:</strong> {ai.category}</p>
+                  <p><strong>Productivity:</strong> {ai.productivity}</p>
+                  <p><strong>Summary:</strong> {ai.summary}</p>
+                  <p>
+                    <strong>Keywords:</strong> {ai.keywords.join(", ")}
+                  </p>
 
-                  )}
+                </div>
+              )}
 
-                  <Typography
-                    variant="h6"
-                    gutterBottom
-                  >
-                    OCR Text
-                  </Typography>
+            </div>
+          );
+        })
+      )}
 
-                  <Card
-                    variant="outlined"
-                    sx={{
-                      p:2,
-                      background:"#fafafa"
-                    }}
-                  >
-
-                    <Typography
-                      sx={{
-                        whiteSpace:"pre-wrap"
-                      }}
-                    >
-                      {item.ocr_text || "No OCR available"}
-                    </Typography>
-
-                  </Card>
-
-                </CardContent>
-
-              </Card>
-
-            </Grid>
-
-          ))}
-
-        </Grid>
-
-      </Container>
-
-    </Box>
-
+<ActivityModal
+  activity={selectedActivity}
+  onClose={() => setSelectedActivity(null)}
+/>
+    </div>
   );
-
 }
 
 export default App;
